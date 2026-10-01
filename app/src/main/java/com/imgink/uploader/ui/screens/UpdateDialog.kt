@@ -103,18 +103,6 @@ fun UpdateDialog(vm: UpdateViewModel) {
             dismissButton = { TextButton(onClick = { vm.dismiss() }) { Text("关闭") } }
         )
 
-        is UpdateState.UpToDate -> AlertDialog(
-            onDismissRequest = { vm.dismiss() },
-            title = { Text("已是最新版本") },
-            text = {
-                Text(
-                    "当前版本 v${vm.currentVersionName} 已是最新。",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            },
-            confirmButton = { TextButton(onClick = { vm.dismiss() }) { Text("好") } }
-        )
-
         else -> Unit
     }
 }

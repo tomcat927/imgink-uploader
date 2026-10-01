@@ -74,6 +74,20 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
     val updateState by updateVm.state.collectAsState()
     val autoCheck by updateVm.autoCheckUpdate.collectAsState()
     val directDl by updateVm.directDownload.collectAsState()
+
+    // 手动检查结果为"已是最新"时用 Toast 轻提示，不弹窗打断
+    val updateCtx = LocalContext.current
+    LaunchedEffect(updateState) {
+        if (updateState is com.imgink.uploader.UpdateState.UpToDate) {
+            Toast.makeText(
+                updateCtx,
+                "已是最新版本 v${updateVm.currentVersionName}",
+                Toast.LENGTH_SHORT
+            ).show()
+            updateVm.dismiss()
+        }
+    }
+
     val buildTime = remember {
         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
             .format(java.util.Date(updateVm.currentVersionCode * 1000))

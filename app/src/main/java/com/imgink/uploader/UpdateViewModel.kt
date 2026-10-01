@@ -53,13 +53,20 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.saveDirectDownload(v) }
     }
 
+    /** 启动静默检查：只有发现新版本才弹窗，无更新或失败均不打扰 */
     fun autoCheckIfNeeded() {
         if (autoChecked || !autoCheckUpdate.value) {
             autoChecked = true
             return
         }
         autoChecked = true
-        checkNow()
+        viewModelScope.launch {
+            try {
+                val info = Updater.checkForUpdate(getApplication(), directDownload.value)
+                if (info != null) _state.value = UpdateState.Available(info)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun checkNow() {
