@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.net.Proxy
 import java.security.MessageDigest
 import java.time.LocalDateTime
@@ -77,71 +78,81 @@ object Updater {
             if (info != null && info.versionCode > current) info else null
         }
 
-    private fun checkManifest(direct: Boolean): UpdateInfo? = try {
-        val url = if (direct) MANIFEST_URL_PROXIED else MANIFEST_URL
-        val body = client(direct).newCall(Request.Builder().url(url).build())
-            .execute().use { if (it.isSuccessful) it.body?.string() else null } ?: return null
-        parseManifest(body)
-    } catch (_: Exception) {
-        null
+    private fun checkManifest(direct: Boolean): UpdateInfo? {
+        return try {
+            val url = if (direct) MANIFEST_URL_PROXIED else MANIFEST_URL
+            val body = client(direct).newCall(Request.Builder().url(url).build())
+                .execute().use { if (it.isSuccessful) it.body?.string() else null }
+                ?: return null
+            parseManifest(body)
+        } catch (_: Exception) {
+            null
+        }
     }
 
-    private fun parseManifest(json: String): UpdateInfo? = runCatching {
-        val d = JSONObject(json)
-        val code = d.getLong("version_code")
-        val apk = d.getString("apk")
-        val ghApk = d.getString("github_apk")
-        val sha = d.getString("apk_sha256")
-        val ghSha = d.getString("github_apk_sha256")
-        if (apk.isBlank() || ghApk.isBlank() || sha.isBlank() || ghSha.isBlank()) return null
-        UpdateInfo(
-            tagName = d.optString("tag_name", ""),
-            versionCode = code,
-            versionDisplay = d.optString("version_display", d.optString("tag_name", "")),
-            downloadUrl = apk,
-            fallbackDownloadUrl = ghApk,
-            checksumUrl = sha,
-            fallbackChecksumUrl = ghSha,
-            releaseUrl = d.optString("release_url", ""),
-            notes = d.optString("release_notes", null)
-        )
-    }.getOrNull()
-
-    private fun checkGithubApi(direct: Boolean): UpdateInfo? = try {
-        val req = Request.Builder().url(API_URL)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", REPO)
-            .build()
-        val body = client(direct).newCall(req).execute()
-            .use { if (it.isSuccessful) it.body?.string() else null } ?: return null
-        val d = JSONObject(body)
-        val tag = d.optString("tag_name", "")
-        val code = versionCodeFromTag(tag) ?: return null
-        val assets = d.optJSONArray("assets") ?: return null
-        var apk = ""; var sha = ""
-        for (i in 0 until assets.length()) {
-            val a = assets.getJSONObject(i)
-            val name = a.optString("name", "")
-            val url = a.optString("browser_download_url", "")
-            when {
-                name.endsWith(".apk") -> apk = url
-                name.endsWith(".apk.sha256") -> sha = url
+    private fun parseManifest(json: String): UpdateInfo? {
+        return runCatching {
+            val d = JSONObject(json)
+            val code = d.getLong("version_code")
+            val apk = d.getString("apk")
+            val ghApk = d.getString("github_apk")
+            val sha = d.getString("apk_sha256")
+            val ghSha = d.getString("github_apk_sha256")
+            if (apk.isBlank() || ghApk.isBlank() || sha.isBlank() || ghSha.isBlank()) {
+                return null
             }
+            UpdateInfo(
+                tagName = d.optString("tag_name", ""),
+                versionCode = code,
+                versionDisplay = d.optString("version_display", d.optString("tag_name", "")),
+                downloadUrl = apk,
+                fallbackDownloadUrl = ghApk,
+                checksumUrl = sha,
+                fallbackChecksumUrl = ghSha,
+                releaseUrl = d.optString("release_url", ""),
+                notes = d.optString("release_notes", null)
+            )
+        }.getOrNull()
+    }
+
+    private fun checkGithubApi(direct: Boolean): UpdateInfo? {
+        return try {
+            val req = Request.Builder().url(API_URL)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", REPO)
+                .build()
+            val body = client(direct).newCall(req).execute()
+                .use { if (it.isSuccessful) it.body?.string() else null }
+                ?: return null
+            val d = JSONObject(body)
+            val tag = d.optString("tag_name", "")
+            val code = versionCodeFromTag(tag) ?: return null
+            val assets = d.optJSONArray("assets") ?: return null
+            var apk = ""; var sha = ""
+            for (i in 0 until assets.length()) {
+                val a = assets.getJSONObject(i)
+                val name = a.optString("name", "")
+                val url = a.optString("browser_download_url", "")
+                when {
+                    name.endsWith(".apk") -> apk = url
+                    name.endsWith(".apk.sha256") -> sha = url
+                }
+            }
+            if (apk.isBlank() || sha.isBlank()) return null
+            UpdateInfo(
+                tagName = tag,
+                versionCode = code,
+                versionDisplay = tag.removePrefix("v"),
+                downloadUrl = PROXY_PREFIX + apk,
+                fallbackDownloadUrl = apk,
+                checksumUrl = PROXY_PREFIX + sha,
+                fallbackChecksumUrl = sha,
+                releaseUrl = d.optString("html_url", ""),
+                notes = d.optString("body", null)
+            )
+        } catch (_: Exception) {
+            null
         }
-        if (apk.isBlank() || sha.isBlank()) return null
-        UpdateInfo(
-            tagName = tag,
-            versionCode = code,
-            versionDisplay = tag.removePrefix("v"),
-            downloadUrl = PROXY_PREFIX + apk,
-            fallbackDownloadUrl = apk,
-            checksumUrl = PROXY_PREFIX + sha,
-            fallbackChecksumUrl = sha,
-            releaseUrl = d.optString("html_url", ""),
-            notes = d.optString("body", null)
-        )
-    } catch (_: Exception) {
-        null
     }
 
     /** tag 形如 v0.2.0-20261001175500（时间为北京时间），解析为 epoch 秒 */
@@ -224,7 +235,7 @@ object Updater {
             var received = if (resume) existing else 0L
             val digest = MessageDigest.getInstance("SHA-256")
 
-            java.io.FileOutputStream(file, resume).use { out ->
+            FileOutputStream(file, resume).use { out ->
                 body.byteStream().use { input ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {

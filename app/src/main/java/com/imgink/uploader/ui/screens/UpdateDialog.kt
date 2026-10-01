@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -32,9 +33,10 @@ fun UpdateDialog(vm: UpdateViewModel) {
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(top = 4.dp)
                     )
-                    s.info.notes?.takeIf { it.isNotBlank() }?.let {
+                    val notes = s.info.notes
+                    if (!notes.isNullOrBlank()) {
                         Text(
-                            it,
+                            notes,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(top = 8.dp)
                         )
