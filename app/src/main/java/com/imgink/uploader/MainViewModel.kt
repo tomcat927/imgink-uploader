@@ -23,7 +23,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.BufferedSink
+import okio.BufferedSink
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
