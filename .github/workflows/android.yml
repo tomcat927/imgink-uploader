@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # 发版前手动递增；构建时间戳由 CI 生成并注入 versionCode
-  APP_VERSION: '0.2.0'
+  # 自用软件：版本号固定，靠构建时间戳区分版本（versionCode = 构建时刻秒，单调递增）
+  APP_VERSION: '0.1.0'
 
 jobs:
   build:

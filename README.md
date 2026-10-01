@@ -34,9 +34,9 @@
 
 版本号策略（参照 notion-app-android）：
 
-- `APP_VERSION`：语义化版本，发版前手动改 `.github/workflows/android.yml` 里的 `env.APP_VERSION`
+- `APP_VERSION`：固定为 `0.1.0`，自用软件不递增，版本区分靠构建时间戳
 - `versionCode`：CI 构建时间戳（秒），永远单调递增，App 以此判断是否需要更新
-- 版本 tag：`v{APP_VERSION}-{yyyyMMddHHmmss}`，由 CI 自动创建
+- 版本 tag：`v0.1.0-{yyyyMMddHHmmss}`，由 CI 自动创建，时间戳即版本标识
 
 ## 配置指南
 

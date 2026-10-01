@@ -13,7 +13,7 @@ android {
         targetSdk = 34
         // CI 注入：versionCode 为构建时间戳（秒，单调递增）；本地默认值仅供开发
         versionCode = (System.getenv("VERSION_CODE") ?: "3").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "0.2.0"
+        versionName = System.getenv("VERSION_NAME") ?: "0.1.0"
     }
 
     // 正式签名：CI 中由 GitHub Secrets 注入（KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD）；
