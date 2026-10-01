@@ -54,8 +54,8 @@ jobs:
 
       - name: Verify signing cert
         if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk | grep -E "Owner:|SHA256:" | head -4
+        # 完整输出含 Owner / SHA1 / SHA256 指纹，供与 Notion 备份页核对（恢复演练依赖此日志）
+        run: keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
