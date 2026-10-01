@@ -295,7 +295,7 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
                 value = rlPathV,
                 onValueChange = { rlPath = it },
                 label = { Text("日志目标路径") },
-                placeholder = { Text("/D-h/imgink-uploader/logs") },
+                placeholder = { Text("/imgink-uploader/logs") },
                 supportingText = { Text("上传失败时会自动上传脱敏日志快照到该目录下的 install-<设备ID>/") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()

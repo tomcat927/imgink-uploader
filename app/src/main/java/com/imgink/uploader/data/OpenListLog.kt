@@ -28,7 +28,7 @@ object OpenListLog {
 
     private const val ALIST_SALT = "https://github.com/alist-org/alist"
     private const val MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
-    private const val DEFAULT_TARGET = "/D-h/imgink-uploader/logs"
+    private const val DEFAULT_TARGET = "/imgink-uploader/logs"
 
     data class Config(
         val enabled: Boolean,
