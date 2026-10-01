@@ -6,8 +6,10 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.imgink.uploader.data.ApiClient
+import com.imgink.uploader.data.AppLog
 import com.imgink.uploader.data.Feishu
 import com.imgink.uploader.data.ImgItem
+import com.imgink.uploader.data.OpenListLog
 import com.imgink.uploader.data.SettingsRepo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,10 +23,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import okio.Buffer
-import okio.BufferedSink
-import okio.ForwardingSink
-import okio.buffer
+import okhttp3.BufferedSink
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,6 +53,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val webhook: StateFlow<String> = repo.webhook.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val secret: StateFlow<String> = repo.secret.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val autoPush: StateFlow<Boolean> = repo.autoPush.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val rlEnabled: StateFlow<Boolean> = repo.remoteLogEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val rlBaseUrl: StateFlow<String> = repo.remoteLogBaseUrl.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val rlUsername: StateFlow<String> = repo.remoteLogUsername.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val rlPassword: StateFlow<String> = repo.remoteLogPassword.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val rlTargetPath: StateFlow<String> = repo.remoteLogTargetPath.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val rlLastUpload: StateFlow<String> = repo.remoteLogLastUpload.stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
     val uploadState: StateFlow<UploadState> = _uploadState.asStateFlow()
@@ -89,6 +95,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun saveRemoteLog(enabled: Boolean, base: String, user: String, pass: String, path: String) {
+        viewModelScope.launch {
+            repo.saveRemoteLogEnabled(enabled)
+            repo.saveRemoteLogBaseUrl(base.trim())
+            repo.saveRemoteLogUsername(user.trim())
+            repo.saveRemoteLogPassword(pass)
+            repo.saveRemoteLogTargetPath(path.trim())
+            AppLog.log("rlog", "config saved (enabled=$enabled)")
+        }
+    }
+
+    fun clearLogs() {
+        AppLog.clear()
+        AppLog.log("rlog", "local logs cleared")
+    }
+
     fun logout() {
         viewModelScope.launch {
             repo.clearToken()
@@ -99,9 +121,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** 用 images 接口校验 token，成功返回账号图片总数 */
     suspend fun validateToken(candidate: String): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
+            AppLog.log("login", "validating token (${candidate.trim().length} chars)")
             val resp = ApiClient.service(baseUrl.value).images(candidate.trim(), 1, 1)
-            if (resp.code == 200) resp.data?.total ?: 0
-            else error(resp.msg ?: "token 无效 (code=${resp.code})")
+            if (resp.code == 200) {
+                AppLog.log("login", "ok, total=${resp.data?.total}")
+                resp.data?.total ?: 0
+            } else {
+                AppLog.log("login", "rejected code=${resp.code} msg=${resp.msg}")
+                error(resp.msg ?: "token 无效 (code=${resp.code})")
+            }
+        }.onFailure {
+            if (it !is IllegalStateException) {
+                AppLog.log("login", "error ${it.javaClass.simpleName}: ${it.message}")
+            }
         }
     }
 
@@ -128,7 +160,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val info = withContext(Dispatchers.IO) { readUriInfo(uri) }
             var name = info.first
+            val folderName = sanitizeFolder(uploadFolder.value).ifBlank { DEFAULT_FOLDER }
             _uploadState.value = UploadState.Uploading(name, 0)
+            AppLog.log("upload", "start name=$name mime=${info.second ?: "?"} folder=$folderName")
             try {
                 val bytes = withContext(Dispatchers.IO) {
                     ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -138,41 +172,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
                 val mime = info.second ?: "image/png"
                 name = ensureExt(name, mime)
+                AppLog.log("upload", "payload name=$name size=${bytes.size}B mime=$mime")
 
+                // 直接向 OkHttp 提供的 sink 分块写入并回报进度；不要包装或提前关闭该 sink
                 val requestBody = object : RequestBody() {
                     override fun contentType() = mime.toMediaTypeOrNull()
                     override fun contentLength(): Long = bytes.size.toLong()
                     override fun writeTo(sink: BufferedSink) {
                         val total = bytes.size.toLong()
-                        var done = 0L
-                        val counting = object : ForwardingSink(sink) {
-                            override fun write(source: Buffer, byteCount: Long) {
-                                super.write(source, byteCount)
-                                done += byteCount
-                                if (total > 0) {
-                                    _uploadState.value =
-                                        UploadState.Uploading(name, (done * 100 / total).toInt().coerceIn(0, 99))
-                                }
-                            }
-                        }
-                        counting.buffer().use { bs ->
-                            bs.write(bytes)
-                            bs.flush()
+                        var written = 0L
+                        var offset = 0
+                        while (offset < bytes.size) {
+                            val chunk = minOf(64 * 1024, bytes.size - offset)
+                            sink.write(bytes, offset, chunk)
+                            offset += chunk
+                            written += chunk
+                            _uploadState.value = UploadState.Uploading(
+                                name, (written * 100 / total).toInt().coerceIn(0, 99)
+                            )
                         }
                     }
                 }
 
                 val part = MultipartBody.Part.createFormData("image", name, requestBody)
-                val folderName = sanitizeFolder(uploadFolder.value).ifBlank { DEFAULT_FOLDER }
                 val folderPart = folderName.toRequestBody("text/plain".toMediaTypeOrNull())
                 val resp = withContext(Dispatchers.IO) {
                     ApiClient.service(baseUrl.value).upload(tk, part, folderPart)
                 }
                 if (resp.code != 200 || resp.data?.url.isNullOrBlank()) {
+                    AppLog.log("upload", "rejected code=${resp.code} msg=${resp.msg}")
                     _uploadState.value = UploadState.Error(resp.msg ?: "上传失败 (code=${resp.code})")
+                    uploadRemoteLogIfEnabled("rejected")
                     return@launch
                 }
                 val d = resp.data!!
+                AppLog.log("upload", "success id=${d.id} url=${d.url}")
                 val size = d.size ?: bytes.size.toLong()
                 var success = UploadState.Success(
                     url = d.url!!,
@@ -189,13 +223,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         webhook.value, secret.value.ifBlank { null },
                         CARD_TITLE, buildMarkdown(name, size, success.url), success.url
                     )
+                    r.onSuccess { AppLog.log("feishu", "auto push ok") }
+                        .onFailure { AppLog.log("feishu", "auto push fail: ${it.message}") }
                     success = success.copy(
                         pushStatus = r.fold({ "✅ 已推送到飞书群" }, { "⚠️ 推送失败：${it.message}" })
                     )
                     _uploadState.value = success
                 }
             } catch (e: Exception) {
+                AppLog.log("upload", "error ${e.javaClass.simpleName}: ${e.message}")
                 _uploadState.value = UploadState.Error(e.message ?: "上传失败")
+                uploadRemoteLogIfEnabled("error")
+            }
+        }
+    }
+
+    /** 上传失败时若已启用远程日志，自动把诊断快照推到 OpenList（静默失败不影响主流程） */
+    private fun uploadRemoteLogIfEnabled(reason: String) {
+        viewModelScope.launch {
+            runCatching {
+                val cfg = OpenListLog.loadConfig(repo)
+                if (cfg.enabled && cfg.isConfigured) {
+                    AppLog.log("rlog", "auto upload ($reason)")
+                    OpenListLog.uploadSnapshot(ctx)
+                }
             }
         }
     }
@@ -210,6 +261,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 webhook.value, secret.value.ifBlank { null },
                 CARD_TITLE, buildMarkdown(s.name, s.size, s.url), s.url
             )
+            r.onSuccess { AppLog.log("feishu", "manual push ok") }
+                .onFailure { AppLog.log("feishu", "manual push fail: ${it.message}") }
             _uploadState.value = s.copy(
                 pushStatus = r.fold({ "✅ 已推送到飞书群" }, { "⚠️ 推送失败：${it.message}" })
             )

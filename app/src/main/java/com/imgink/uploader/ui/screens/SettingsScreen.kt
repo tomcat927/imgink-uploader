@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.imgink.uploader.MainViewModel
 import com.imgink.uploader.UpdateViewModel
 import com.imgink.uploader.data.Feishu
+import com.imgink.uploader.data.OpenListLog
 import com.imgink.uploader.data.Updater
 import kotlinx.coroutines.launch
 
@@ -77,6 +78,32 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
     val updateState by updateVm.state.collectAsState()
     val autoCheck by updateVm.autoCheckUpdate.collectAsState()
     val directDl by updateVm.directDownload.collectAsState()
+
+    // 远程日志配置（null = 未从 DataStore 加载完成）
+    val rlOnFlow by vm.rlEnabled.collectAsState()
+    val rlBaseFlow by vm.rlBaseUrl.collectAsState()
+    val rlUserFlow by vm.rlUsername.collectAsState()
+    val rlPassFlow by vm.rlPassword.collectAsState()
+    val rlPathFlow by vm.rlTargetPath.collectAsState()
+    val rlLastFlow by vm.rlLastUpload.collectAsState()
+    var rlOn by remember { mutableStateOf<Boolean?>(null) }
+    var rlBase by remember { mutableStateOf<String?>(null) }
+    var rlUser by remember { mutableStateOf<String?>(null) }
+    var rlPass by remember { mutableStateOf<String?>(null) }
+    var rlPath by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(rlOnFlow) { if (rlOn == null) rlOn = rlOnFlow }
+    LaunchedEffect(rlBaseFlow) { if (rlBase == null) rlBase = rlBaseFlow }
+    LaunchedEffect(rlUserFlow) { if (rlUser == null) rlUser = rlUserFlow }
+    LaunchedEffect(rlPassFlow) { if (rlPass == null) rlPass = rlPassFlow }
+    LaunchedEffect(rlPathFlow) { if (rlPath == null) rlPath = rlPathFlow }
+    val rlOnV = rlOn ?: false
+    val rlBaseV = rlBase ?: ""
+    val rlUserV = rlUser ?: ""
+    val rlPassV = rlPass ?: ""
+    val rlPathV = rlPath ?: ""
+    var rlBusy by remember { mutableStateOf<String?>(null) }
+    var rlResult by remember { mutableStateOf<String?>(null) }
+    var showLogViewer by remember { mutableStateOf(false) }
 
     // 手动检查结果为"已是最新"时用 Toast 轻提示，不弹窗打断
     val updateCtx = LocalContext.current
@@ -236,6 +263,91 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
+            Text("诊断日志", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("启用远程日志（OpenList）", Modifier.weight(1f))
+                Switch(checked = rlOnV, onCheckedChange = { rlOn = it })
+            }
+            OutlinedTextField(
+                value = rlBaseV,
+                onValueChange = { rlBase = it },
+                label = { Text("OpenList 地址") },
+                placeholder = { Text("http://192.168.x.x:5244") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = rlUserV,
+                onValueChange = { rlUser = it },
+                label = { Text("用户名") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = rlPassV,
+                onValueChange = { rlPass = it },
+                label = { Text("密码") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = rlPathV,
+                onValueChange = { rlPath = it },
+                label = { Text("日志目标路径") },
+                placeholder = { Text("/D-h/imgink-uploader/logs") },
+                supportingText = { Text("上传失败时会自动上传脱敏日志快照到该目录下的 install-<设备ID>/") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = {
+                    vm.saveRemoteLog(rlOnV, rlBaseV, rlUserV, rlPassV, rlPathV)
+                    Toast.makeText(ctx, "诊断配置已保存", Toast.LENGTH_SHORT).show()
+                }) { Text("保存") }
+                OutlinedButton(
+                    onClick = {
+                        rlBusy = "test"; rlResult = null
+                        scope.launch {
+                            val r = OpenListLog.testConnection(rlBaseV, rlUserV, rlPassV)
+                            rlResult = r.fold(
+                                onSuccess = { "✅ 连接成功" },
+                                onFailure = { "❌ ${it.message}" }
+                            )
+                            rlBusy = null
+                        }
+                    },
+                    enabled = rlBusy == null
+                ) { Text(if (rlBusy == "test") "测试中…" else "测试连接") }
+                OutlinedButton(
+                    onClick = {
+                        rlBusy = "upload"; rlResult = null
+                        scope.launch {
+                            val r = OpenListLog.uploadSnapshot(ctx)
+                            rlResult = r.fold(
+                                onSuccess = { "✅ 已上传：$it" },
+                                onFailure = { "❌ ${it.message}" }
+                            )
+                            rlBusy = null
+                        }
+                    },
+                    enabled = rlBusy == null
+                ) { Text(if (rlBusy == "upload") "上传中…" else "上传日志") }
+            }
+            rlResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (rlLastFlow.isNotBlank()) {
+                Text(
+                    "上次上传：$rlLastFlow",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { showLogViewer = true }) { Text("查看本地日志") }
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
             Text("账号", style = MaterialTheme.typography.titleMedium)
             OutlinedButton(onClick = { vm.logout() }, modifier = Modifier.fillMaxWidth()) {
                 Text("退出登录 / 清除 Token")
@@ -248,5 +360,9 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
                 color = MaterialTheme.colorScheme.outline
             )
         }
+    }
+
+    if (showLogViewer) {
+        LogViewerDialog(vm) { showLogViewer = false }
     }
 }

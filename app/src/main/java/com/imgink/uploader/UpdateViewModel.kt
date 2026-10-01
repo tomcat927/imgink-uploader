@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.imgink.uploader.data.AppLog
 import com.imgink.uploader.data.SettingsRepo
 import com.imgink.uploader.data.Updater
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,8 +64,14 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val info = Updater.checkForUpdate(getApplication(), directDownload.value)
-                if (info != null) _state.value = UpdateState.Available(info)
-            } catch (_: Exception) {
+                if (info != null) {
+                    AppLog.log("update", "available ${info.tagName} code=${info.versionCode}")
+                    _state.value = UpdateState.Available(info)
+                } else {
+                    AppLog.log("update", "auto check: up to date")
+                }
+            } catch (e: Exception) {
+                AppLog.log("update", "auto check failed: ${e.message}")
             }
         }
     }
@@ -72,11 +79,19 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
     fun checkNow() {
         if (_state.value is UpdateState.Downloading) return
         _state.value = UpdateState.Checking
+        AppLog.log("update", "manual check start")
         viewModelScope.launch {
             try {
                 val info = Updater.checkForUpdate(getApplication(), directDownload.value)
-                _state.value = if (info != null) UpdateState.Available(info) else UpdateState.UpToDate
+                if (info != null) {
+                    AppLog.log("update", "available ${info.tagName} code=${info.versionCode}")
+                    _state.value = UpdateState.Available(info)
+                } else {
+                    AppLog.log("update", "up to date")
+                    _state.value = UpdateState.UpToDate
+                }
             } catch (e: Exception) {
+                AppLog.log("update", "check error ${e.javaClass.simpleName}: ${e.message}")
                 _state.value = UpdateState.Failed(e.message ?: "检查更新失败")
             }
         }
@@ -85,6 +100,7 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
     fun download(info: Updater.UpdateInfo) {
         if (_state.value is UpdateState.Downloading) return
         _state.value = UpdateState.Downloading(0, 0)
+        AppLog.log("update", "download start ${info.tagName} direct=${directDownload.value}")
         viewModelScope.launch {
             try {
                 val apk = Updater.downloadAndVerify(
@@ -92,8 +108,10 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
                 ) { received, total ->
                     _state.value = UpdateState.Downloading(received, total)
                 }
+                AppLog.log("update", "download ok size=${apk.length()}")
                 _state.value = UpdateState.Ready(info, apk)
             } catch (e: Exception) {
+                AppLog.log("update", "download fail ${e.javaClass.simpleName}: ${e.message}")
                 _state.value = UpdateState.Failed(e.message ?: "下载失败")
             }
         }
