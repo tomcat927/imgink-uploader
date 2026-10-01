@@ -109,7 +109,17 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
                     _state.value = UpdateState.Downloading(received, total)
                 }
                 AppLog.log("update", "download ok size=${apk.length()}")
-                _state.value = UpdateState.Ready(info, apk)
+                // 校验通过直接调起系统安装器（系统安装确认即唯一一次确认）；
+                // 仅在首次缺「安装未知应用」权限时才落到 Ready 弹窗引导授权
+                val ctx = getApplication<Application>()
+                if (Updater.canInstall(ctx)) {
+                    Updater.installApk(ctx, apk)
+                    AppLog.log("update", "installer launched")
+                    _state.value = UpdateState.Idle
+                } else {
+                    AppLog.log("update", "install permission missing, ask user to grant")
+                    _state.value = UpdateState.Ready(info, apk)
+                }
             } catch (e: Exception) {
                 AppLog.log("update", "download fail ${e.javaClass.simpleName}: ${e.message}")
                 _state.value = UpdateState.Failed(e.message ?: "下载失败")

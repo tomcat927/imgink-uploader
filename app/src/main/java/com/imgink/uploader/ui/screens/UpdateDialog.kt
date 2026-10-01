@@ -76,19 +76,18 @@ fun UpdateDialog(vm: UpdateViewModel) {
 
         is UpdateState.Ready -> AlertDialog(
             onDismissRequest = {},
-            title = { Text("更新包已就绪") },
+            title = { Text("需要安装权限") },
             text = {
                 Text(
-                    "${s.info.versionDisplay} 已下载并通过校验，点击「安装」启动系统安装器。\n\n若提示不允许安装未知应用，请授权后返回再点安装。",
+                    "${s.info.versionDisplay} 已下载并通过校验，但尚未允许本应用「安装未知应用」。\n\n点击「去授权」开启允许后返回，再点「安装」即可（仅需一次，之后更新会直接调起安装器）。",
                     style = MaterialTheme.typography.bodySmall
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val started = vm.install(ctx, s.apk)
-                    if (started) vm.dismiss()
-                    else Toast.makeText(ctx, "请允许「安装未知应用」后返回重试", Toast.LENGTH_LONG).show()
-                }) { Text("安装") }
+                    if (vm.install(ctx, s.apk)) vm.dismiss()
+                    else Toast.makeText(ctx, "请开启「允许安装未知应用」后返回重试", Toast.LENGTH_LONG).show()
+                }) { Text("去授权") }
             },
             dismissButton = { TextButton(onClick = { vm.dismiss() }) { Text("稍后") } }
         )
