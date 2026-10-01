@@ -23,12 +23,12 @@ class SettingsRepo(private val context: Context) {
     val baseUrl: Flow<String> = context.dataStore.data.map { it[Keys.BASE_URL].orEmpty() }
     val webhook: Flow<String> = context.dataStore.data.map { it[Keys.FEISHU_WEBHOOK].orEmpty() }
     val secret: Flow<String> = context.dataStore.data.map { it[Keys.FEISHU_SECRET].orEmpty() }
-    val autoPush: Flow<Boolean> = context.dataStore.data.map { it[Keys.AUTO_PUS] ?: false }
+    val autoPush: Flow<Boolean> = context.dataStore.data.map { it[Keys.AUTO_PUSH] ?: false }
 
     suspend fun saveToken(v: String) = context.dataStore.edit { it[Keys.TOKEN] = v }
     suspend fun saveBaseUrl(v: String) = context.dataStore.edit { it[Keys.BASE_URL] = v }
     suspend fun saveWebhook(v: String) = context.dataStore.edit { it[Keys.FEISHU_WEBHOOK] = v }
     suspend fun saveSecret(v: String) = context.dataStore.edit { it[Keys.FEISHU_SECRET] = v }
-    suspend fun saveAutoPush(v: Boolean) = context.dataStore.edit { it[Keys.AUTO_PUS] = v }
+    suspend fun saveAutoPush(v: Boolean) = context.dataStore.edit { it[Keys.AUTO_PUSH] = v }
     suspend fun clearToken() = context.dataStore.edit { it.remove(Keys.TOKEN) }
 }
