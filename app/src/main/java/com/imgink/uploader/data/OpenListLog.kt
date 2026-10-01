@@ -188,16 +188,23 @@ object OpenListLog {
             .url("$base/api/fs/put")
             .header("Authorization", token)
             .header("File-Path", java.net.URLEncoder.encode(remotePath, "UTF-8"))
-            .post(bytes.toRequestBody("application/octet-stream".toMediaType()))
+            // 注意必须是 PUT：实测 POST 也会返回 HTTP 200 但响应体非标准 JSON
+            .put(bytes.toRequestBody("application/octet-stream".toMediaType()))
             .build()
         client.newCall(req).execute().use { http ->
-            val json = runCatching { JSONObject(http.body?.string().orEmpty()) }.getOrNull()
+            val text = http.body?.string().orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrNull()
+            if (http.code == 401) throw AuthException(json?.optString("message").orEmpty())
             val code = json?.optInt("code") ?: -1
-            val msg = json?.optString("message").orEmpty()
-            if (http.code == 401 || code == 401) throw AuthException(msg)
-            if (code != 200) {
-                error("put $remotePath 失败: ${msg.ifBlank { "HTTP ${http.code}" }}")
+            if (code == 200) return
+            // 部分版本 fs/put 成功时返回空体，HTTP 200 且无 JSON 视为成功
+            if (json == null && http.code == 200 && text.isBlank()) {
+                AppLog.log("rlog", "put ok (empty body)")
+                return
             }
+            if (code == 401) throw AuthException(json?.optString("message").orEmpty())
+            AppLog.log("rlog", "put http=${http.code} body=${text.take(300)}")
+            error("put $remotePath 失败: ${json?.optString("message").orEmpty().ifBlank { "HTTP ${http.code}" }}")
         }
     }
 
