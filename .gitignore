@@ -9,3 +9,10 @@
 .cxx
 local.properties
 /app/build
+
+# 签名密钥：仅本地备份 + GitHub Secrets，严禁提交
+signing/
+signing.properties
+*.p12
+*.jks
+*.keystore

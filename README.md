@@ -58,7 +58,7 @@ Kotlin · Jetpack Compose (Material 3) · Retrofit/OkHttp · DataStore · Coil �
 
 版本号在 `app/build.gradle.kts` 的 `defaultConfig` 中维护。
 
-> 注意：release 目前使用 debug 签名（方便测试机直接安装）。正式分发前请改为通过 GitHub Secrets 注入签名密钥。
+**签名**：release APK 使用正式密钥签名，密钥以 GitHub Secrets 注入（`KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`），Keystore 本体备份在项目所有者的 Notion 与本地 `signing/` 目录（均已排除在 Git 之外，见 `.gitignore`）。本地没有签名环境变量时自动回退 debug 签名。密钥丢失将无法向已安装用户推送更新，请勿清空 GitHub Secrets。
 
 ## 路线图
 
