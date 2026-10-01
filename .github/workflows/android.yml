@@ -58,6 +58,7 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Decode signing keystore
+        id: keystore
         if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
