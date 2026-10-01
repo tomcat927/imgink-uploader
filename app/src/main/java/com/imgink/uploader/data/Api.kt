@@ -92,6 +92,7 @@ object ApiClient {
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
+            .addInterceptor(HttpLog.interceptor("imgink"))
             .build()
         val s = Retrofit.Builder()
             .baseUrl(norm)

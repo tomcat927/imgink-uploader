@@ -232,7 +232,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 AppLog.log("upload", "error ${e.javaClass.simpleName}: ${e.message}")
-                _uploadState.value = UploadState.Error(e.message ?: "上传失败")
+                _uploadState.value = UploadState.Error("${e.javaClass.simpleName}: ${e.message ?: "上传失败"}")
                 uploadRemoteLogIfEnabled("error")
             }
         }

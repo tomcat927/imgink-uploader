@@ -44,6 +44,7 @@ object OpenListLog {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .proxy(Proxy.NO_PROXY) // 内网地址直连，绕过手机系统代理
+        .addInterceptor(HttpLog.interceptor("openlist"))
         .build()
 
     // ---------- 配置 ----------
@@ -77,21 +78,25 @@ object OpenListLog {
         runCatching {
             val repo = SettingsRepo(context)
             val cfg = loadConfig(repo)
-            if (!cfg.enabled) error("远程诊断日志未启用")
-            if (!cfg.isConfigured) error("请先完成 OpenList 配置")
-            require(cfg.password.isNotBlank()) { "OpenList 密码未配置" }
+            if (!cfg.enabled) error("远程日志开关未打开（设置→诊断日志）")
+            if (cfg.baseUrl.isBlank()) error("OpenList 地址未填写")
+            if (cfg.username.isBlank()) error("OpenList 用户名未填写")
+            if (cfg.targetPath.isBlank()) error("日志目标路径未填写")
+            require(cfg.password.isNotBlank()) { "OpenList 密码未填写" }
 
             val base = normalizeBaseUrl(cfg.baseUrl)
+            AppLog.log("rlog", "upload start → ${cfg.targetPath}")
             var token = login(base, cfg.username, cfg.password)
 
             val snapshot = buildSnapshot()
             val bytes = snapshot.toByteArray(Charsets.UTF_8)
-            check(bytes.size <= MAX_SNAPSHOT_BYTES) { "脱敏日志超过 2MB" }
+            check(bytes.size <= MAX_SNAPSHOT_BYTES) { "脱敏日志超过 2MB（${bytes.size}B）" }
 
             val installId = installId(context)
             val dir = "${cfg.targetPath.trimEnd('/')}/install-$installId"
             val fileTs = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
             val remotePath = "$dir/diag-$fileTs.txt"
+            AppLog.log("rlog", "snapshot ${bytes.size}B install=$installId")
 
             try {
                 ensureDir(base, token, cfg.targetPath)
@@ -164,7 +169,8 @@ object OpenListLog {
             .put("otp_code", "")
         val resp = post(base, "/api/auth/login/hash", body, token = null)
         if (resp.code != 200 || resp.dataToken.isBlank()) {
-            error(resp.message.ifBlank { "OpenList 登录失败" })
+            AppLog.log("rlog", "login fail code=${resp.code} http=${resp.httpCode} msg=${resp.message}")
+            error(resp.message.ifBlank { "OpenList 登录失败（HTTP ${resp.httpCode}）" })
         }
         return resp.dataToken
     }
@@ -173,7 +179,7 @@ object OpenListLog {
         val resp = post(base, "/api/fs/mkdir", JSONObject().put("path", path), token)
         if (resp.httpCode == 401 || resp.code == 401) throw AuthException(resp.message)
         if (resp.code != 200 && !resp.message.lowercase().contains("exist")) {
-            error(resp.message.ifBlank { "无法创建远程日志目录" })
+            error("mkdir $path 失败: ${resp.message.ifBlank { "HTTP ${resp.httpCode}" }}")
         }
     }
 
@@ -189,7 +195,9 @@ object OpenListLog {
             val code = json?.optInt("code") ?: -1
             val msg = json?.optString("message").orEmpty()
             if (http.code == 401 || code == 401) throw AuthException(msg)
-            if (code != 200) error(msg.ifBlank { "上传诊断日志失败（HTTP ${http.code}）" })
+            if (code != 200) {
+                error("put $remotePath 失败: ${msg.ifBlank { "HTTP ${http.code}" }}")
+            }
         }
     }
 
