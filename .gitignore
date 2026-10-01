@@ -16,3 +16,5 @@ signing.properties
 *.p12
 *.jks
 *.keystore
+/notion_payload.json
+/tools/build_notion_payload.py
