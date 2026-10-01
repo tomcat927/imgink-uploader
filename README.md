@@ -19,15 +19,24 @@
 - **三种上传入口**：相册选择 / 拍照 / 系统分享（任意应用「分享 → ImgInk 图床」，截图工作流丝滑）
 - **上传进度**、成功后链接自动复制到剪贴板，支持 链接 / Markdown / HTML 三种格式
 - **飞书自动推送**：上传成功自动发卡片消息到指定飞书群（链接放在代码块里，桌面端一键复制）；支持签名校验
+- **热更新**：启动自动检查新版本，App 内一键下载（gh-proxy 国内加速 + GitHub 直连双通道、断点续传）、SHA-256 校验后调起系统安装器
 - **上传历史**：分页浏览账号内所有图片，复制链接 / 浏览器打开 / 删除
 - **API 站点可配置**：换图床站点时无需改代码
 
-## 下载安装
+## 下载安装 / 热更新
 
-- **Release 版**：[Releases](../../releases) 页面下载 `app-release.apk`（tag 推送自动构建）
-- **开发版**：Actions → 最近的 `Android Build` → Artifacts → `imgink-uploader-debug`（每次 push main 自动构建）
+- **首次安装**：[Releases](../../releases) 下载最新 `imgink-uploader-vX.Y.Z-时间戳.apk` 安装（Android 8.0+）
+- **热更新**：装好后无需再来 GitHub——App 启动时自动检查新版本（设置里可关），发现新版本弹窗一键下载，SHA-256 校验通过后调起系统安装器
+- 每次构建生成带时间戳的版本号（versionCode = 构建时刻的 Unix 秒），`latest.json` 清单随 Release 发布，App 优先走 gh-proxy 国内加速、失败自动切 GitHub 直连，再回退 GitHub API
+- CI 自动清理旧的时间戳 Release（保留最近 10 个），人工维护的固定 tag 不受影响
 
-安装时允许"未知来源应用"即可。Android 8.0+（minSdk 26）。
+## 开发与发布流程
+
+版本号策略（参照 notion-app-android）：
+
+- `APP_VERSION`：语义化版本，发版前手动改 `.github/workflows/android.yml` 里的 `env.APP_VERSION`
+- `versionCode`：CI 构建时间戳（秒），永远单调递增，App 以此判断是否需要更新
+- 版本 tag：`v{APP_VERSION}-{yyyyMMddHHmmss}`，由 CI 自动创建
 
 ## 配置指南
 
@@ -63,8 +72,8 @@ Kotlin · Jetpack Compose (Material 3) · Retrofit/OkHttp · DataStore · Coil �
 ## 路线图
 
 - [x] v0.1.0 Token 登录、三种上传入口、飞书自动推送、上传历史、CI/CD
-- [ ] v0.2 通知栏快捷磁贴、二维码展示、失败自动重试
-- [ ] v0.3 folder 分类上传、多账号管理
+- [x] v0.2.0 正式签名（GitHub Secrets）+ 热更新（自动检查/加速下载/SHA-256 校验/一键安装）
+- [ ] v0.3 通知栏快捷磁贴、二维码展示、失败自动重试、folder 分类上传
 - [ ] v0.4 全自动化：B 端监听飞书群消息，agent 自动取链接分析
 
 ## 许可

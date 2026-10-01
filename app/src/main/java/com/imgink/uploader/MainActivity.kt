@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModelProvider
+import com.imgink.uploader.UpdateViewModel
 import com.imgink.uploader.ui.App
 import com.imgink.uploader.ui.theme.AppTheme
 
@@ -17,10 +18,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val vm = ViewModelProvider(this)[MainViewModel::class.java]
+        val updateVm = ViewModelProvider(this)[UpdateViewModel::class.java]
         handleIntent(intent, vm)
         setContent {
             AppTheme {
-                App(vm)
+                App(vm, updateVm)
             }
         }
     }

@@ -42,12 +42,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.imgink.uploader.MainViewModel
+import com.imgink.uploader.UpdateViewModel
 import com.imgink.uploader.data.Feishu
+import com.imgink.uploader.data.Updater
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -68,6 +70,14 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
+
+    val updateState by updateVm.state.collectAsState()
+    val autoCheck by updateVm.autoCheckUpdate.collectAsState()
+    val directDl by updateVm.directDownload.collectAsState()
+    val buildTime = remember {
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(updateVm.currentVersionCode * 1000))
+    }
 
     val hv = hook ?: ""
     val sv = sec ?: ""
@@ -165,6 +175,40 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
+            Text("版本与更新", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "当前版本 v${updateVm.currentVersionName} · 构建于 $buildTime",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("启动时自动检查更新", Modifier.weight(1f))
+                Switch(checked = autoCheck, onCheckedChange = { updateVm.saveAutoCheckUpdate(it) })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("更新下载直连（配合国内加速代理）", Modifier.weight(1f))
+                Switch(checked = directDl, onCheckedChange = { updateVm.saveDirectDownload(it) })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { updateVm.checkNow() },
+                    enabled = updateState !is com.imgink.uploader.UpdateState.Checking
+                ) {
+                    if (updateState is com.imgink.uploader.UpdateState.Checking) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text("检查更新")
+                }
+            }
+            Text(
+                "每次推送代码都会自动构建新版本并发布，App 启动时检查到新版本即可一键下载安装。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
             Text("账号", style = MaterialTheme.typography.titleMedium)
             OutlinedButton(onClick = { vm.logout() }, modifier = Modifier.fillMaxWidth()) {
                 Text("退出登录 / 清除 Token")
@@ -172,7 +216,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
 
             Spacer(Modifier.padding(bottom = 24.dp))
             Text(
-                "v0.1.0 · APK 由 GitHub Actions 自动构建",
+                "APK 由 GitHub Actions 自动构建并签名发布",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )

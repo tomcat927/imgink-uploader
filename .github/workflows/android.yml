@@ -3,15 +3,24 @@ name: Android Build
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 发版前手动递增；构建时间戳由 CI 生成并注入 versionCode
+  APP_VERSION: '0.2.0'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,41 +34,146 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      - name: Generate version info
+        id: version
+        run: |
+          export TZ=Asia/Shanghai
+          VERSION_CODE=$(date +%s)
+          BUILD_TIME=$(date +%Y%m%d%H%M%S)
+          TAG="v${APP_VERSION}-${BUILD_TIME}"
+          echo "code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "display=${BUILD_TIME:0:8} ${BUILD_TIME:8:6}" >> "$GITHUB_OUTPUT"
+          echo "Generated ${TAG} (versionCode: ${VERSION_CODE})"
+
+      - name: Build debug APK (pull request)
+        if: github.event_name == 'pull_request'
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload debug APK artifact
+      - name: Upload debug APK artifact (pull request)
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: imgink-uploader-debug
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Decode signing keystore
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PATH: ${{ runner.temp }}/imgink-release.p12
         run: |
-          mkdir -p signing
-          echo "$KEYSTORE_BASE64" | base64 -d > signing/release.p12
-          ls -la signing/
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::未配置 KEYSTORE_BASE64，本次 APK 将使用 debug 签名，无法覆盖安装正式签名版本。"
+            echo "path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          echo "path=$KEYSTORE_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name != 'pull_request'
         env:
-          KEYSTORE_FILE: ${{ github.workspace }}/signing/release.p12
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ env.APP_VERSION }}
+          KEYSTORE_FILE: ${{ steps.keystore.outputs.path }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify signing cert
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name != 'pull_request'
         # 完整输出含 Owner / SHA1 / SHA256 指纹，供与 Notion 备份页核对（恢复演练依赖此日志）
         run: keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/app-release.apk
-          generate_release_notes: true
+      - name: Prepare release assets
+        if: github.event_name != 'pull_request'
+        id: assets
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          DISPLAY: ${{ steps.version.outputs.display }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          APK_NAME="imgink-uploader-${TAG}.apk"
+          CHECKSUM_NAME="${APK_NAME}.sha256"
+          cp app/build/outputs/apk/release/app-release.apk "$APK_NAME"
+          sha256sum "$APK_NAME" > "$CHECKSUM_NAME"
+
+          GITHUB_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
+          PROXY_URL="https://gh-proxy.com/${GITHUB_URL}"
+          GITHUB_CHECKSUM_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${CHECKSUM_NAME}"
+          PROXY_CHECKSUM_URL="https://gh-proxy.com/${GITHUB_CHECKSUM_URL}"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+          cat > latest.json <<EOF
+          {
+            "tag_name": "${TAG}",
+            "version_display": "${APP_VERSION} (${DISPLAY})",
+            "version_code": ${{ steps.version.outputs.code }},
+            "apk": "${PROXY_URL}",
+            "github_apk": "${GITHUB_URL}",
+            "apk_sha256": "${PROXY_CHECKSUM_URL}",
+            "github_apk_sha256": "${GITHUB_CHECKSUM_URL}",
+            "release_url": "${RELEASE_URL}",
+            "release_notes": "更新包优先通过 GitHub 代理下载，校验通过后启动系统安装器。"
+          }
+          EOF
+
+          cat > release-notes.md <<EOF
+          ## 版本
+
+          - 版本：${APP_VERSION} (${DISPLAY}) · versionCode ${{ steps.version.outputs.code }}
+
+          ## 本次变更
+
+          \`\`\`
+          ${COMMIT_MSG}
+          \`\`\`
+
+          ## Android APK 下载
+
+          - [国内加速下载](${PROXY_URL})
+          - [GitHub 原始下载](${GITHUB_URL})
+
+          ## 文件校验
+
+          - 文件：\`${APK_NAME}\`
+          - SHA-256：见 \`${CHECKSUM_NAME}\`
+
+          App 内「设置 → 检查更新」可自动下载并校验安装；如加速地址不可用会自动切换 GitHub 原始地址。
+          EOF
+
+          echo "apk=${APK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "checksum=${CHECKSUM_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and GitHub Release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release-notes.md \
+            imgink-uploader-"$TAG".apk imgink-uploader-"$TAG".apk.sha256 latest.json
+
+      - name: Cleanup old releases (keep 10)
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 仅清理时间戳格式的自动发版 tag，保护人工维护的 v0.1.0 / v0.1.1
+          mapfile -t RELEASES < <(gh release list --limit 100 --json tagName,createdAt \
+            --jq '.[] | select(.tagName | test("^v[0-9.]+-[0-9]{14}$")) | "\(.createdAt) \(.tagName)"' | sort -r)
+          TOTAL=${#RELEASES[@]}
+          echo "Found $TOTAL auto releases; keeping 10"
+          for ((i=10; i<TOTAL; i++)); do
+            OLD_TAG=$(echo "${RELEASES[$i]}" | awk '{print $2}')
+            echo "Deleting release and tag: $OLD_TAG"
+            gh release delete "$OLD_TAG" --yes --cleanup-tag || echo "Failed to delete $OLD_TAG"
+          done
