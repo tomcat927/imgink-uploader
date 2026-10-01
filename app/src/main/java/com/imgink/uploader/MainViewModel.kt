@@ -37,7 +37,9 @@ sealed interface UploadState {
         val size: Long,
         val quotaTotal: String? = null,
         val quotaUsed: String? = null,
-        val pushStatus: String = ""
+        val pushStatus: String = "",
+        /** 自动复制是只发一次的副作用，标记防止切页后 LaunchedEffect 重放 */
+        val copied: Boolean = false
     ) : UploadState
     data class Error(val message: String) : UploadState
 }
@@ -149,6 +151,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissUpload() {
         _uploadState.value = UploadState.Idle
+    }
+
+    /** 自动复制已完成，抑制后续重组/返回首页时的重放 */
+    fun markCopied(s: UploadState.Success) {
+        val cur = _uploadState.value
+        if (cur is UploadState.Success && cur.url == s.url) {
+            _uploadState.value = cur.copy(copied = true)
+        }
     }
 
     fun startUpload(uri: Uri) {

@@ -62,11 +62,13 @@ fun HomeScreen(vm: MainViewModel, onHistory: () -> Unit, onSettings: () -> Unit)
     val clipboard = LocalClipboardManager.current
     val state by vm.uploadState.collectAsState()
 
-    // 上传成功后自动复制链接
+    // 上传成功后自动复制链接（一次性副作用：复制过即标记，切页返回不重放）
     LaunchedEffect(state) {
         val s = state as? UploadState.Success ?: return@LaunchedEffect
+        if (s.copied) return@LaunchedEffect
         clipboard.setText(AnnotatedString(s.url))
         Toast.makeText(ctx, "链接已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        vm.markCopied(s)
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
