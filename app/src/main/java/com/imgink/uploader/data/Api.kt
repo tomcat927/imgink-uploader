@@ -2,6 +2,7 @@ package com.imgink.uploader.data
 
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Field
@@ -53,7 +54,8 @@ interface ImgInkService {
     @POST("api/upload")
     suspend fun upload(
         @Header("token") token: String,
-        @Part image: MultipartBody.Part
+        @Part image: MultipartBody.Part,
+        @Part("folder") folder: RequestBody? = null
     ): ApiResponse<UploadData>
 
     @FormUrlEncoded

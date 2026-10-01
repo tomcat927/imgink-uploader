@@ -57,15 +57,18 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
     val secFlow by vm.secret.collectAsState()
     val autoFlow by vm.autoPush.collectAsState()
     val baseFlow by vm.baseUrl.collectAsState()
+    val folderFlow by vm.uploadFolder.collectAsState()
 
     // null 表示尚未从 DataStore 加载完成
     var hook by remember { mutableStateOf<String?>(null) }
     var sec by remember { mutableStateOf<String?>(null) }
     var base by remember { mutableStateOf<String?>(null) }
+    var folder by remember { mutableStateOf<String?>(null) }
     var auto by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(hookFlow) { if (hook == null) hook = hookFlow }
     LaunchedEffect(secFlow) { if (sec == null) sec = secFlow }
     LaunchedEffect(baseFlow) { if (base == null) base = baseFlow }
+    LaunchedEffect(folderFlow) { if (folder == null) folder = folderFlow }
     LaunchedEffect(autoFlow) { if (auto == null) auto = autoFlow }
 
     var testing by remember { mutableStateOf(false) }
@@ -96,6 +99,7 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
     val hv = hook ?: ""
     val sv = sec ?: ""
     val bv = base ?: ""
+    val fv = folder ?: ""
     val av = auto ?: false
 
     Scaffold(
@@ -142,7 +146,7 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = {
-                    vm.saveSettings(bv, hv, sv, av)
+                    vm.saveSettings(bv, hv, sv, av, fv)
                     Toast.makeText(ctx, "已保存", Toast.LENGTH_SHORT).show()
                 }) { Text("保存") }
                 OutlinedButton(
@@ -183,6 +187,15 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
                 onValueChange = { base = it },
                 label = { Text("API 站点地址") },
                 placeholder = { Text("https://img.ink/") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = fv,
+                onValueChange = { folder = it },
+                label = { Text("上传目标文件夹") },
+                placeholder = { Text("默认 imgink，仅限英文字母数字") },
+                supportingText = { Text("留空使用 imgink；非法字符会在上传时自动剔除") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )

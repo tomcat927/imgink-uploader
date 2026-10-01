@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
 import okio.BufferedSink
 import okio.ForwardingSink
@@ -49,6 +50,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val token: StateFlow<String> = repo.token.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val baseUrl: StateFlow<String> = repo.baseUrl.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val uploadFolder: StateFlow<String> = repo.uploadFolder.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val webhook: StateFlow<String> = repo.webhook.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val secret: StateFlow<String> = repo.secret.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val autoPush: StateFlow<Boolean> = repo.autoPush.stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -77,12 +79,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.saveToken(v.trim()) }
     }
 
-    fun saveSettings(base: String, hook: String, sec: String, auto: Boolean) {
+    fun saveSettings(base: String, hook: String, sec: String, auto: Boolean, folder: String) {
         viewModelScope.launch {
             repo.saveBaseUrl(base.trim())
             repo.saveWebhook(hook.trim())
             repo.saveSecret(sec.trim())
             repo.saveAutoPush(auto)
+            repo.saveUploadFolder(folder.trim())
         }
     }
 
@@ -160,8 +163,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 val part = MultipartBody.Part.createFormData("image", name, requestBody)
+                val folderName = sanitizeFolder(uploadFolder.value).ifBlank { DEFAULT_FOLDER }
+                val folderPart = folderName.toRequestBody("text/plain".toMediaTypeOrNull())
                 val resp = withContext(Dispatchers.IO) {
-                    ApiClient.service(baseUrl.value).upload(tk, part)
+                    ApiClient.service(baseUrl.value).upload(tk, part, folderPart)
                 }
                 if (resp.code != 200 || resp.data?.url.isNullOrBlank()) {
                     _uploadState.value = UploadState.Error(resp.msg ?: "上传失败 (code=${resp.code})")
@@ -284,8 +289,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return "$name.$suffix"
     }
 
+    /** img.ink 文件夹仅允许英文字母数字；非法字符直接剔除，留空时由调用方回退默认值 */
+    private fun sanitizeFolder(raw: String): String =
+        raw.filter { it.code < 128 && it.isLetterOrDigit() }.take(32)
+
     companion object {
         const val CARD_TITLE = "📤 图片上传成功 · 图床"
+
+        /** img.ink 文件夹仅允许英文数字，App 默认归档目录（设置留空时使用） */
+        const val DEFAULT_FOLDER = "imgink"
 
         fun buildMarkdown(name: String, size: Long, url: String): String =
             "**文件：** $name\n**大小：** ${fmtSize(size)}\n**时间：** ${now()}\n\n[查看图片]($url)"

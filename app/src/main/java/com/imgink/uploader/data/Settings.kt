@@ -13,16 +13,19 @@ private val Context.dataStore by preferencesDataStore("settings")
 object Keys {
     val TOKEN = stringPreferencesKey("imgink_token")
     val BASE_URL = stringPreferencesKey("imgink_base_url")
+    val UPLOAD_FOLDER = stringPreferencesKey("upload_folder")
     val FEISHU_WEBHOOK = stringPreferencesKey("feishu_webhook")
     val FEISHU_SECRET = stringPreferencesKey("feishu_secret")
-    val AUTO_PUSH = booleanPreferencesKey("auto_push")
     val AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
     val DIRECT_DOWNLOAD = booleanPreferencesKey("direct_download")
+    val AUTO_PUSH = booleanPreferencesKey("auto_push")
 }
 
 class SettingsRepo(private val context: Context) {
     val token: Flow<String> = context.dataStore.data.map { it[Keys.TOKEN].orEmpty() }
     val baseUrl: Flow<String> = context.dataStore.data.map { it[Keys.BASE_URL].orEmpty() }
+    val uploadFolder: Flow<String> =
+        context.dataStore.data.map { it[Keys.UPLOAD_FOLDER].orEmpty() }
     val webhook: Flow<String> = context.dataStore.data.map { it[Keys.FEISHU_WEBHOOK].orEmpty() }
     val secret: Flow<String> = context.dataStore.data.map { it[Keys.FEISHU_SECRET].orEmpty() }
     val autoPush: Flow<Boolean> = context.dataStore.data.map { it[Keys.AUTO_PUSH] ?: false }
@@ -33,6 +36,8 @@ class SettingsRepo(private val context: Context) {
 
     suspend fun saveToken(v: String) = context.dataStore.edit { it[Keys.TOKEN] = v }
     suspend fun saveBaseUrl(v: String) = context.dataStore.edit { it[Keys.BASE_URL] = v }
+    suspend fun saveUploadFolder(v: String) =
+        context.dataStore.edit { it[Keys.UPLOAD_FOLDER] = v }
     suspend fun saveWebhook(v: String) = context.dataStore.edit { it[Keys.FEISHU_WEBHOOK] = v }
     suspend fun saveSecret(v: String) = context.dataStore.edit { it[Keys.FEISHU_SECRET] = v }
     suspend fun saveAutoPush(v: Boolean) = context.dataStore.edit { it[Keys.AUTO_PUSH] = v }
