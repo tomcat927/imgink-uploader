@@ -350,7 +350,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val CARD_TITLE = "📤 图片上传成功 · 图床"
 
         /** img.ink 文件夹仅允许英文数字，App 默认归档目录（设置留空时使用） */
-        const val DEFAULT_FOLDER = "imgink"
+        const val DEFAULT_FOLDER = SettingsRepo.DEFAULT_UPLOAD_FOLDER
 
         fun buildMarkdown(name: String, size: Long, url: String): String =
             "**文件：** $name\n**大小：** ${fmtSize(size)}\n**时间：** ${now()}\n\n[查看图片]($url)"

@@ -28,7 +28,6 @@ object OpenListLog {
 
     private const val ALIST_SALT = "https://github.com/alist-org/alist"
     private const val MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
-    private const val DEFAULT_TARGET = "/imgink-uploader/logs"
 
     data class Config(
         val enabled: Boolean,
@@ -56,7 +55,7 @@ object OpenListLog {
             baseUrl = p.remoteLogBaseUrl,
             username = p.remoteLogUsername,
             password = p.remoteLogPassword,
-            targetPath = p.remoteLogTargetPath.ifBlank { DEFAULT_TARGET }
+            targetPath = p.remoteLogTargetPath.ifBlank { SettingsRepo.DEFAULT_LOG_TARGET }
         )
     }
 

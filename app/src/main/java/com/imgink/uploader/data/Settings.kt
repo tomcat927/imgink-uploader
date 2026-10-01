@@ -40,10 +40,17 @@ data class SettingsSnapshot(
 )
 
 class SettingsRepo(private val context: Context) {
+
+    companion object {
+        /** 未配置时预填展示的默认值（用户可直接看到并修改） */
+        const val DEFAULT_UPLOAD_FOLDER = "imgink"
+        const val DEFAULT_LOG_TARGET = "/imgink-uploader/logs"
+    }
+
     val token: Flow<String> = context.dataStore.data.map { it[Keys.TOKEN].orEmpty() }
     val baseUrl: Flow<String> = context.dataStore.data.map { it[Keys.BASE_URL].orEmpty() }
     val uploadFolder: Flow<String> =
-        context.dataStore.data.map { it[Keys.UPLOAD_FOLDER].orEmpty() }
+        context.dataStore.data.map { it[Keys.UPLOAD_FOLDER] ?: DEFAULT_UPLOAD_FOLDER }
     val webhook: Flow<String> = context.dataStore.data.map { it[Keys.FEISHU_WEBHOOK].orEmpty() }
     val secret: Flow<String> = context.dataStore.data.map { it[Keys.FEISHU_SECRET].orEmpty() }
     val autoPush: Flow<Boolean> = context.dataStore.data.map { it[Keys.AUTO_PUSH] ?: false }
@@ -56,7 +63,7 @@ class SettingsRepo(private val context: Context) {
     val remoteLogPassword: Flow<String> =
         context.dataStore.data.map { it[Keys.RL_PASSWORD].orEmpty() }
     val remoteLogTargetPath: Flow<String> =
-        context.dataStore.data.map { it[Keys.RL_TARGET_PATH].orEmpty() }
+        context.dataStore.data.map { it[Keys.RL_TARGET_PATH] ?: DEFAULT_LOG_TARGET }
     val remoteLogLastUpload: Flow<String> =
         context.dataStore.data.map { it[Keys.RL_LAST_UPLOAD].orEmpty() }
 
