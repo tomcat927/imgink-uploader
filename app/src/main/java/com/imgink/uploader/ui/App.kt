@@ -23,12 +23,12 @@ fun App(vm: MainViewModel, updateVm: UpdateViewModel) {
     // 启动时按配置静默检查更新（每进程一次）
     LaunchedEffect(Unit) { updateVm.autoCheckIfNeeded() }
 
-    // 分享进入：跳回首页并直接上传
-    val shared by vm.sharedUri.collectAsState()
+    // 分享进入：跳回首页并直接上传（单张 / 多张共用批量队列）
+    val shared by vm.sharedUris.collectAsState()
     LaunchedEffect(shared) {
-        if (shared != null) {
+        if (!shared.isNullOrEmpty()) {
             screen = "home"
-            vm.startUpload(shared!!)
+            vm.startBatch(shared!!)
             vm.consumeShared()
         }
     }

@@ -33,11 +33,18 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent, vm)
     }
 
-    /** 接收系统分享：其他应用「分享 → ImgInk 图床」时直接触发上传 */
+    /** 接收系统分享：其他应用「分享 → ImgInk 图床」时直接触发上传（支持单张与多张） */
     private fun handleIntent(intent: Intent?, vm: MainViewModel) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
-            val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            vm.onShared(uri)
+        val action = intent?.action
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
+        if (intent.type?.startsWith("image/") != true) return
+        val uris = when (action) {
+            Intent.ACTION_SEND ->
+                listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+            else ->
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                    .orEmpty().filterNotNull()
         }
+        vm.onShared(uris)
     }
 }
