@@ -134,13 +134,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun saveRemoteLog(enabled: Boolean, base: String, user: String, pass: String, path: String) {
+        viewModelScope.launch { persistRemoteLog(enabled, base, user, pass, path) }
+    }
+
+    /**
+     * 持久化远程日志配置。
+     * 上传日志前必须先把表单落盘，否则 [OpenListLog.uploadSnapshot] 读到的仍是旧的 enabled=false。
+     * @param enabled 传 null 表示开关尚未从 DataStore 加载完成，此时跳过写入，避免把已保存的值覆盖成默认值
+     */
+    suspend fun persistRemoteLog(
+        enabled: Boolean?,
+        base: String,
+        user: String,
+        pass: String,
+        path: String
+    ) {
+        enabled?.let { repo.saveRemoteLogEnabled(it) }
+        repo.saveRemoteLogBaseUrl(base.trim())
+        repo.saveRemoteLogUsername(user.trim())
+        repo.saveRemoteLogPassword(pass)
+        repo.saveRemoteLogTargetPath(path.trim())
+        AppLog.log("rlog", "config saved (enabled=$enabled)")
+    }
+
+    /** 开关即时落盘：开关状态本身就是配置，不应依赖用户再去点「保存」 */
+    fun setRemoteLogEnabled(enabled: Boolean) {
         viewModelScope.launch {
             repo.saveRemoteLogEnabled(enabled)
-            repo.saveRemoteLogBaseUrl(base.trim())
-            repo.saveRemoteLogUsername(user.trim())
-            repo.saveRemoteLogPassword(pass)
-            repo.saveRemoteLogTargetPath(path.trim())
-            AppLog.log("rlog", "config saved (enabled=$enabled)")
+            AppLog.log("rlog", "enabled=$enabled")
         }
     }
 

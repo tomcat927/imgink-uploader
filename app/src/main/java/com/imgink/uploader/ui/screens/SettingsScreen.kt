@@ -267,7 +267,13 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
             Text("诊断日志", style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("启用远程日志（OpenList）", Modifier.weight(1f))
-                Switch(checked = rlOnV, onCheckedChange = { rlOn = it })
+                Switch(
+                    checked = rlOnV,
+                    onCheckedChange = {
+                        rlOn = it
+                        vm.setRemoteLogEnabled(it) // 开关即时落盘，不再依赖「保存」
+                    }
+                )
             }
             OutlinedTextField(
                 value = rlBaseV,
@@ -303,8 +309,11 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = {
-                    vm.saveRemoteLog(rlOnV, rlBaseV, rlUserV, rlPassV, rlPathV)
-                    Toast.makeText(ctx, "诊断配置已保存", Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        // 传 rlOn（可空）：未加载完成时不写 enabled，避免把已保存的开关覆盖掉
+                        vm.persistRemoteLog(rlOn, rlBaseV, rlUserV, rlPassV, rlPathV)
+                        Toast.makeText(ctx, "诊断配置已保存", Toast.LENGTH_SHORT).show()
+                    }
                 }) { Text("保存") }
                 OutlinedButton(
                     onClick = {
@@ -324,6 +333,8 @@ fun SettingsScreen(vm: MainViewModel, updateVm: UpdateViewModel, onBack: () -> U
                     onClick = {
                         rlBusy = "upload"; rlResult = null
                         scope.launch {
+                            // 先落盘再上传：uploadSnapshot 读的是 DataStore，不是本页的表单状态
+                            vm.persistRemoteLog(rlOn, rlBaseV, rlUserV, rlPassV, rlPathV)
                             val r = OpenListLog.uploadSnapshot(ctx)
                             rlResult = r.fold(
                                 onSuccess = { "✅ 已上传：$it" },
