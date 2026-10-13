@@ -107,8 +107,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     data class HistoryUi(
         val loading: Boolean = false,
+        /** 已加载的记录，恒为「最新在前」的倒序（服务端升序返回，客户端逐页反转拼接） */
         val items: List<ImgItem> = emptyList(),
+        /** 已加载到的最小编号页；服务端按时间升序，最大页号即最新一页，从后往前翻 */
         val page: Int = 0,
+        /** 总页数（最大页号 = 最新一页） */
         val lastPage: Int = 1,
         val total: Int? = null,
         val error: String? = null
@@ -427,30 +430,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 历史记录 ----------
 
+    /**
+     * 上传历史：服务端 /api/images 仅按 upload_time 升序返回且不支持排序参数，
+     * 因此这里从最大页号（最新）往第 1 页（最旧）翻，并把每页结果 reversed() 后拼接，
+     * 让列表整体呈「最新在前」；「加载更多」加载的是更早的页（page 递减）。
+     */
     fun loadHistory(reset: Boolean = false) {
         val tk = token.value
         if (tk.isBlank()) return
         val cur = _history.value
         if (cur.loading) return
-        val nextPage = if (reset) 1 else cur.page + 1
-        if (!reset && cur.page >= cur.lastPage) return
+        if (!reset && cur.page <= 1) return
         _history.value = cur.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
-                val resp = withContext(Dispatchers.IO) {
-                    ApiClient.service(baseUrl.value).images(tk, nextPage, 20)
-                }
-                val d = resp.data
-                if (resp.code == 200 && d != null) {
+                if (reset) {
+                    // 先取第 1 页拿总页数（last_page 与 rows 相关，必须与翻页用同一 rows）
+                    val meta = withContext(Dispatchers.IO) {
+                        ApiClient.service(baseUrl.value).images(tk, 1, HISTORY_PAGE_SIZE)
+                    }
+                    val md = meta.data
+                    if (meta.code != 200 || md == null) {
+                        _history.value = _history.value.copy(loading = false, error = meta.msg ?: "加载失败")
+                        return@launch
+                    }
+                    val lastPage = (md.last_page ?: 1).coerceAtLeast(1)
+                    // 单页账号直接复用第 1 页数据，避免重复请求
+                    var pageData = md
+                    if (lastPage > 1) {
+                        val resp = withContext(Dispatchers.IO) {
+                            ApiClient.service(baseUrl.value).images(tk, lastPage, HISTORY_PAGE_SIZE)
+                        }
+                        val d = resp.data
+                        if (resp.code != 200 || d == null) {
+                            _history.value = _history.value.copy(loading = false, error = resp.msg ?: "加载失败")
+                            return@launch
+                        }
+                        pageData = d
+                    }
                     _history.value = HistoryUi(
                         loading = false,
-                        items = if (reset) d.data.orEmpty() else _history.value.items + d.data.orEmpty(),
-                        page = d.current_page ?: nextPage,
-                        lastPage = (d.last_page ?: 1).coerceAtLeast(1),
-                        total = d.total
+                        items = pageData.data.orEmpty().reversed(),
+                        page = lastPage,
+                        lastPage = lastPage,
+                        total = pageData.total ?: md.total
                     )
                 } else {
-                    _history.value = _history.value.copy(loading = false, error = resp.msg ?: "加载失败")
+                    val nextPage = cur.page - 1
+                    val resp = withContext(Dispatchers.IO) {
+                        ApiClient.service(baseUrl.value).images(tk, nextPage, HISTORY_PAGE_SIZE)
+                    }
+                    val d = resp.data
+                    if (resp.code == 200 && d != null) {
+                        _history.value = _history.value.copy(
+                            loading = false,
+                            items = _history.value.items + d.data.orEmpty().reversed(),
+                            page = nextPage,
+                            lastPage = (d.last_page ?: _history.value.lastPage).coerceAtLeast(1),
+                            total = d.total ?: _history.value.total
+                        )
+                    } else {
+                        _history.value = _history.value.copy(loading = false, error = resp.msg ?: "加载失败")
+                    }
                 }
             } catch (e: Exception) {
                 _history.value = _history.value.copy(loading = false, error = e.message ?: "网络错误")
@@ -513,6 +554,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** 飞书卡片文本长度有限，代码块最多列这么多条 URL，超出只显示计数 */
         const val FEISHU_URL_LIMIT = 20
+
+        /** 上传历史每页条数；last_page 由服务端按此值计算，翻页必须保持一致 */
+        const val HISTORY_PAGE_SIZE = 20
 
         /** img.ink 文件夹仅允许英文数字，App 默认归档目录（设置留空时使用） */
         const val DEFAULT_FOLDER = SettingsRepo.DEFAULT_UPLOAD_FOLDER

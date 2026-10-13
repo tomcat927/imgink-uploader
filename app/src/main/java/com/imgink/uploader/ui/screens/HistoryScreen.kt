@@ -152,7 +152,7 @@ fun HistoryScreen(vm: MainViewModel, onBack: () -> Unit) {
                                 Modifier.fillMaxWidth().padding(12.dp),
                                 horizontalArrangement = Arrangement.Center
                             ) { CircularProgressIndicator(Modifier.size(24.dp)) }
-                            ui.page < ui.lastPage -> OutlinedButton(
+                            ui.page > 1 -> OutlinedButton(
                                 onClick = { vm.loadHistory(false) },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("加载更多") }
